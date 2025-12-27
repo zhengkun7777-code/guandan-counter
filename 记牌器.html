@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>掼蛋记牌器 (v5.8 - 终极完美版)</title>
+    <style>
+        :root {
+            --primary-color: #3498db; --secondary-color: #2ecc71; --danger-color: #e74c3c;
+            --warning-color: #f39c12; --light-bg: #ecf0f1; --dark-text: #2c3e50;
+            --border-radius: 12px; --white: #fff;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
+        .main-container { width: 100%; max-width: 1100px; margin: 0 auto; }
+        .box { background-color: var(--white); padding: 20px; border-radius: var(--border-radius); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08); margin-bottom: 20px; }
+        h1, h2, h3 { color: var(--dark-text); text-align: center; }
+        h2 { font-size: 1.4em; margin-top: 0; border-bottom: 2px solid var(--light-bg); padding-bottom: 10px; margin-bottom: 15px;}
+
+        /* 牌面网格 */
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); gap: 10px; }
+        .card-item { border: 2px solid #dee2e6; border-radius: 8px; padding: 10px 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; user-select: none; }
+        .card-item:hover, .card-item.selected { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: var(--warning-color); }
+        .card-name { font-size: 1.3em; font-weight: bold; }
+        .card-count { font-size: 1.6em; font-weight: bold; color: var(--danger-color); margin-top: 4px; }
+        .card-item.hongpei { border-color: #c0392b; background-color: #e6b0aa; }
+        .card-item.hongpei .card-count { color: #c0392b; }
+        
+        /* 我的手牌 */
+        #myHandContainer { position: sticky; top: 10px; z-index: 99; }
+        #myHandDisplay { display: flex; flex-wrap: wrap; gap: 8px; min-height: 40px; padding: 10px; background-color: #f8f9fa; border-radius: 8px;}
+        .my-card-tag { background-color: var(--primary-color); color: var(--white); padding: 5px 10px; border-radius: 20px; font-size: 0.9em; font-weight: bold; cursor: pointer; }
+        .confirm-hand-btn { width: 100%; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-size: 1.2em; font-weight: bold; background-color: var(--warning-color); margin-top: 15px; }
+        
+        /* 游戏状态 & 操作区 */
+        .setup-mode #actionContainer, .setup-mode #historyContainer, .setup-mode #resetContainer { display: none; }
+        .tracking-mode #confirmHandButton, .tracking-mode #myHandContainer h2 span:first-child { display: none; }
+        .tracking-mode .my-card-tag { cursor: default; }
+        .player-selectors { display: flex; gap: 10px; margin-bottom: 15px; }
+        .turn-commit-area { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .turn-commit-area .buttons { display: flex; gap: 10px; margin-top: 15px; justify-content: center; }
+        .turn-commit-area .buttons button { flex-basis: 150px; padding: 10px 20px; font-size: 1em; }
+        #currentTurnDisplay { font-size: 1.2em; font-weight: bold; min-height: 25px; color: var(--dark-text); }
+        .action-button { width: 100%; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-size: 1.2em; font-weight: bold; transition: all 0.2s ease; }
+        .player-selector-btn { flex-grow: 1; background-color: #bdc3c7; }
+        .player-selector-btn.active { background-color: var(--primary-color); transform: scale(1.05); }
+        .hotkey-hint { font-size: 0.8em; color: #7f8c8d; }
+
+        /* 历史记录 */
+        .history-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        .player-history { border: 2px solid transparent; transition: all 0.3s ease; padding:15px; border-radius: 8px;}
+        .player-history.active { border-color: var(--primary-color); background-color: #eaf5ff; }
+        .player-history h3 { margin-top: 0; }
+        .log-list { list-style-type: none; padding: 0; margin: 0; height: 180px; overflow-y: auto; }
+        .log-item { display: flex; justify-content: space-between; align-items: center; background: white; padding: 8px 12px; border-radius: 5px; margin-bottom: 8px; font-family: monospace; font-size: 1.1em; }
+        .undo-button { background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em; padding: 4px 8px; }
+        #resetContainer { background: none; box-shadow: none; padding: 0; }
+        .reset-game-btn { width:100%; background-color: var(--secondary-color); font-size: 1.1em; padding: 12px; color:white; border:none; border-radius:8px; cursor:pointer; }
+    </style>
+</head>
+<body class="setup-mode">
+    <div class="main-container">
+        <div class="box" id="myHandContainer">
+            <h2>我的手牌 <span id="myHandCount">(0/27)</span> <span id="handSetupTitle"> - 请录入 (回车确认)</span></h2>
+            <div id="myHandDisplay"></div>
+            <button class="confirm-hand-btn" id="confirmHandButton" onclick="confirmHandAndStartTracking()">确认手牌 (回车)</button>
+        </div>
+        <div class="box" id="counterContainer">
+            <h2>牌池剩余牌</h2>
+            <div class="card-grid" id="cardGrid"></div>
+        </div>
+        <div class="box" id="actionContainer">
+            <h2>出牌操作区</h2>
+            <div class="player-selectors">
+                <button id="btn-prev" class="action-button player-selector-btn" onclick="setActivePlayer('prev')">上家 <span class="hotkey-hint">(Z)</span></button>
+                <button id="btn-partner" class="action-button player-selector-btn" onclick="setActivePlayer('partner')">对家 <span class="hotkey-hint">(X)</span></button>
+                <button id="btn-next" class="action-button player-selector-btn" onclick="setActivePlayer('next')">下家 <span class="hotkey-hint">(C)</span></button>
+            </div>
+            <div class="turn-commit-area">
+                <h3>当前选择</h3>
+                <div id="currentTurnDisplay">- 请先选择出牌方 -</div>
+                <div class="buttons">
+                    <button id="confirmBtn" class="action-button" style="background-color:#2ecc71;" onclick="confirmTurn()">确认 (空格)</button>
+                    <button class="action-button" style="background-color:#e74c3c;" onclick="clearCurrentTurn()">清空 (ESC)</button>
+                </div>
+            </div>
+        </div>
+        <div class="box" id="historyContainer">
+            <h2>出牌历史</h2>
+            <div class="history-grid">
+                <div class="player-history" id="history-prev"><h3>上家</h3><ul class="log-list" id="log-prev"></ul></div>
+                <div class="player-history" id="history-partner"><h3>对家</h3><ul class="log-list" id="log-partner"></ul></div>
+                <div class="player-history" id="history-next"><h3>下家</h3><ul class="log-list" id="log-next"></ul></div>
+            </div>
+        </div>
+        <div class="box" id="resetContainer"> <button class="reset-game-btn" onclick="resetGame()">新 一 局</button> </div>
+    </div>
+
+    <script>
+        // --- 数据 ---
+        const initialCardData = {"A":8,"2":8,"3":8,"4":8,"5":8,"6":8,"7":8,"8":8,"9":8,"10":8,"J":8,"Q":8,"K":8,"小王":2,"大王":2, "配":2};
+        const cardDisplayOrder = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "配", "小王", "大王"];
+        const cardValueMap = {'2':16,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14, '配':15, '小王':17,'大王':18};
+        const keyMap = { 'KeyZ': 'prev', 'KeyX': 'partner', 'KeyC': 'next',
+                         'Digit1': 'A', 'Digit2': '2', 'Digit3': '3', 'Digit4': '4', 'Digit5': '5', 'Digit6': '6', 'Digit7': '7', 'Digit8': '8', 'Digit9': '9', 'Digit0': '10',
+                         'KeyA': 'A', 'KeyJ': 'J', 'KeyQ': 'Q', 'KeyK': 'K', 'KeyS': '小王', 'KeyB': '大王', 'KeyH': '配', 'KeyP': '配' };
+        
+        // --- 状态 ---
+        let gameState = 'setup', cardCounts = {}, cardElements = {}, myHand = {}, myHandTotalCount = 0, myHandHistory = [];
+        let playHistory = { prev: [], partner: [], next: [] };
+        let activePlayer = null, currentTurn = [];
+
+        // --- 初始化 ---
+        function initializeGame() { 
+            gameState = 'setup'; document.body.className = 'setup-mode'; myHand = {}; myHandTotalCount = 0; myHandHistory = [];
+            playHistory = { prev: [], partner: [], next: [] };
+            cardCounts = JSON.parse(JSON.stringify(initialCardData));
+            const cardGrid = document.getElementById('cardGrid'); cardGrid.innerHTML = '';
+            cardDisplayOrder.forEach(card => {
+                const cardItem = document.createElement('div'); cardItem.className = 'card-item'; 
+                if (["小王", "大王"].includes(card)) cardItem.classList.add('joker');
+                if (card === '配') cardItem.classList.add('hongpei');
+                cardItem.onclick = () => handleCardClick(card);
+                cardItem.innerHTML = `<div class="card-name">${card}</div><div class="card-count">${cardCounts[card]}</div>`;
+                cardGrid.appendChild(cardItem); cardElements[card] = { item: cardItem, countEl: cardItem.querySelector('.card-count') };
+            });
+            clearCurrentTurn(); setActivePlayer(null); updateMyHandDisplay(); updateAllHistoryLogs();
+        }
+
+        // --- 手牌录入 ---
+        function addToMyHand(card) {
+            if (cardCounts[card] <= 0) return; cardCounts[card]--; myHand[card] = (myHand[card] || 0) + 1; myHandTotalCount++; 
+            myHandHistory.push(card); updateMyHandDisplay(); cardElements[card].countEl.textContent = cardCounts[card];
+        }
+        function removeFromMyHand(card) {
+            if (gameState !== 'setup' || !myHand[card]) return; 
+            const indexToRemove = myHandHistory.lastIndexOf(card);
+            if(indexToRemove > -1) {
+                myHandHistory.splice(indexToRemove, 1);
+                cardCounts[card]++; myHand[card]--; if (myHand[card] === 0) delete myHand[card]; myHandTotalCount--;
+                updateMyHandDisplay(); cardElements[card].countEl.textContent = cardCounts[card];
+            }
+        }
+        function undoLastHandEntry() {
+            if (gameState !== 'setup' || myHandHistory.length === 0) return;
+            const lastCard = myHandHistory.pop();
+            cardCounts[lastCard]++; myHand[lastCard]--; if (myHand[lastCard] === 0) delete myHand[lastCard]; myHandTotalCount--;
+            updateMyHandDisplay(); cardElements[lastCard].countEl.textContent = cardCounts[lastCard];
+        }
+        function clearMyHand() {
+            myHandHistory.forEach(card => cardCounts[card]++);
+            myHand = {}; myHandTotalCount = 0; myHandHistory = [];
+            updateMyHandDisplay();
+            for(const card in cardCounts) cardElements[card].countEl.textContent = cardCounts[card];
+        }
+        function updateMyHandDisplay() {
+            const display = document.getElementById('myHandDisplay'); display.innerHTML = ''; 
+            document.getElementById('myHandCount').textContent = `(${myHandTotalCount}/27)`;
+            cardDisplayOrder.filter(card => myHand[card]).forEach(card => {
+                const tag = document.createElement('div'); tag.className = 'my-card-tag'; tag.textContent = `${card} × ${myHand[card]}`; 
+                tag.onclick = () => removeFromMyHand(card); display.appendChild(tag);
+            });
+        }
+        function confirmHandAndStartTracking() {
+             if (myHandTotalCount !== 27 && !confirm(`您录入了 ${myHandTotalCount} 张牌，不是27张。确定要继续吗？`)) return; 
+             gameState = 'tracking'; document.body.className = 'tracking-mode'; 
+             document.querySelectorAll('.my-card-tag').forEach(tag => tag.onclick = null);
+        }
+
+        // --- 核心交互 ---
+        function handleCardClick(card) {
+            if (gameState === 'setup') { addToMyHand(card); return; }
+            if (!activePlayer) { alert('请先选择一个出牌方 (按键 Z/X/C)！'); return; }
+            if (cardCounts[card] <= 0) return;
+            cardCounts[card]--;
+            cardElements[card].countEl.textContent = cardCounts[card];
+            cardElements[card].item.classList.add('selected');
+            currentTurn.push(card);
+            updateCurrentTurnDisplay();
+        }
+        function setActivePlayer(player) {
+            if (gameState !== 'tracking' || activePlayer === player) return;
+            clearCurrentTurn(); activePlayer = player;
+            ['prev', 'partner', 'next'].forEach(p => {
+                document.getElementById(`btn-${p}`).classList.toggle('active', p === player);
+                document.getElementById(`history-${p}`).classList.toggle('active', p === player);
+            });
+            updateCurrentTurnDisplay();
+        }
+        function updateCurrentTurnDisplay() {
+            const display = document.getElementById('currentTurnDisplay');
+            if (!activePlayer) { display.textContent = '- 请先选择出牌方 -'; } 
+            else if (currentTurn.length === 0) { display.textContent = '- 请点选或按键选牌 -'; } 
+            else { display.textContent = [...currentTurn].sort((a,b) => cardValueMap[b] - cardValueMap[a]).join(' '); }
+        }
+        function clearCurrentTurn() {
+            currentTurn.forEach(card => { cardCounts[card]++; cardElements[card].countEl.textContent = cardCounts[card]; });
+            currentTurn = [];
+            document.querySelectorAll('.card-item.selected').forEach(el => el.classList.remove('selected'));
+            updateCurrentTurnDisplay();
+        }
+        function undoLastCardSelection() {
+            if(currentTurn.length > 0) {
+                const lastCard = currentTurn.pop();
+                cardCounts[lastCard]++;
+                cardElements[lastCard].countEl.textContent = cardCounts[lastCard];
+                const selectedCardsOfSameType = Array.from(document.querySelectorAll('.card-item.selected')).filter(el => el.querySelector('.card-name').textContent === lastCard);
+                if (selectedCardsOfSameType.length > 0) {
+                    selectedCardsOfSameType[selectedCardsOfSameType.length - 1].classList.remove('selected');
+                }
+                updateCurrentTurnDisplay();
+            }
+        }
+        function confirmTurn() {
+            if (!activePlayer || currentTurn.length === 0) return;
+            playHistory[activePlayer].push({ play: [...currentTurn], id: Date.now() });
+            updateHistoryLog(activePlayer);
+            currentTurn = [];
+            document.querySelectorAll('.card-item.selected').forEach(el => el.classList.remove('selected'));
+            updateCurrentTurnDisplay();
+        }
+
+        // --- 历史记录与重置 ---
+        function undoPlay(player, entryId) {
+            const history = playHistory[player]; const entryIndex = history.findIndex(entry => entry.id === entryId); if (entryIndex === -1) return;
+            const playToUndo = history.splice(entryIndex, 1)[0].play;
+            playToUndo.forEach(card => { cardCounts[card]++; cardElements[card].countEl.textContent = cardCounts[card]; });
+            updateHistoryLog(player);
+        }
+
+        // BUG FIX: The appendChild call was outside the loop.
+        function updateHistoryLog(player) {
+            const logList = document.getElementById(`log-${player}`); 
+            if(!logList) return; 
+            logList.innerHTML = '';
+            const historyCopy = JSON.parse(JSON.stringify(playHistory[player]));
+            historyCopy.reverse().forEach(entry => {
+                const logItem = document.createElement('li'); 
+                logItem.className = 'log-item';
+                const displayText = entry.play.sort((a,b) => cardValueMap[b] - cardValueMap[a]).join('').replace(/配/g, '(配)');
+                logItem.innerHTML = `<span>${displayText}</span><button class="undo-button" onclick="undoPlay('${player}', ${entry.id})">撤销</button>`;
+                logList.appendChild(logItem); // MOVED INSIDE
+            });
+        }
+        
+        function updateAllHistoryLogs() { ['prev', 'partner', 'next'].forEach(updateHistoryLog); }
+        function resetGame() { if (confirm("确定要开始新一局吗？所有记录都将被清空。")) initializeGame(); }
+
+        // --- 全流程键盘快捷键 ---
+        document.addEventListener('keydown', function(event) {
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+            const key = event.code;
+
+            if (gameState === 'setup') {
+                if (keyMap[key] && cardDisplayOrder.includes(keyMap[key])) { addToMyHand(keyMap[key]); return; }
+                switch(key) {
+                    case 'Enter': confirmHandAndStartTracking(); break;
+                    case 'Backspace': undoLastHandEntry(); break;
+                    case 'Escape': clearMyHand(); break;
+                }
+            } else { // tracking
+                if (keyMap[key] && ['prev', 'partner', 'next'].includes(keyMap[key])) { setActivePlayer(keyMap[key]); return; }
+                if (keyMap[key] && cardDisplayOrder.includes(keyMap[key])) { handleCardClick(keyMap[key]); return; }
+                switch(key) {
+                    case 'Space': if (activePlayer && currentTurn.length > 0) { event.preventDefault(); confirmTurn(); } break;
+                    case 'Backspace': undoLastCardSelection(); break;
+                    case 'Escape': clearCurrentTurn(); break;
+                }
+            }
+        });
+        
+        document.addEventListener('DOMContentLoaded', initializeGame);
+    </script>
+</body>
+</html>
